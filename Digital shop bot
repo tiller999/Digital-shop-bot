@@ -1,0 +1,148 @@
+# 📘 Telegram Digital Shop Bot (Manual MoMo/Orange Payments)
+
+This is a ready-to-deploy Telegram bot for selling digital products (ebooks, guides, templates).
+
+## 🚀 Features
+- Sell multiple products
+- Show product details & prices
+- Accept payments via MTN MoMo / Orange Money (manual verification)
+- Buyers upload proof (screenshot/transaction ID)
+- Admin confirms/rejects payments with simple commands
+- Bot automatically delivers correct product link
+
+---
+
+## ⚙️ Setup
+
+1. Clone the repo:
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/digital-shop-bot.git
+   cd digital-shop-botfrom telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
+
+# ==== CONFIG ====
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"   # replace with BotFather token
+ADMIN_ID = 123456789                # replace with your Telegram user ID
+
+# Your products
+PRODUCTS = {
+    "ebook1": {
+        "name": "📘 Devenir Rich au Cameroun",
+        "price": "2000 XAF",
+        "desc": "Guide pratique pour créer des revenus au Cameroun.",
+        "file": "https://yourdomain.com/ebook1.pdf"
+    },
+    "ebook2": {
+        "name": "📗 10 Business Idées Rentables",
+        "price": "2500 XAF",
+        "desc": "10 idées faciles pour démarrer un business rentable.",
+        "file": "https://yourdomain.com/ebook2.pdf"
+    },
+    "ebook3": {
+        "name": "📙 Secrets du Marketing Digital",
+        "price": "3000 XAF",
+        "desc": "Stratégies pour vendre et gagner en ligne.",
+        "file": "https://yourdomain.com/ebook3.pdf"
+    }
+}
+
+# Track user selected product
+user_selected_product = {}
+
+# ==== HANDLERS ====
+
+def start(update: Update, context: CallbackContext):
+    keyboard = []
+    for code, prod in PRODUCTS.items():
+        keyboard.append([InlineKeyboardButton(f"{prod['name']} - {prod['price']}", callback_data=f"prod_{code}")])
+    
+    update.message.reply_text(
+        "👋 Bienvenue dans la *Boutique Digitale* !\n\nSélectionne un produit à acheter :",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+def button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    chat_id = query.message.chat_id
+
+    if query.data.startswith("prod_"):
+        product_code = query.data.split("_")[1]
+        product = PRODUCTS[product_code]
+        user_selected_product[chat_id] = product_code
+
+        details = (
+            f"{product['name']}\n\n"
+            f"💰 Prix: {product['price']}\n\n"
+            f"{product['desc']}\n\n"
+            "➡️ Pour acheter:\n"
+            "1️⃣ Envoie le montant au numéro suivant:\n"
+            "   📱 MTN MoMo: **670000000**\n"
+            "   📱 Orange Money: **690000000**\n"
+            "   Référence: *EBOOK*\n\n"
+            "2️⃣ Après paiement, envoie la preuve ici."
+        )
+        keyboard = [[InlineKeyboardButton("✅ J'ai payé", callback_data="paid")]]
+        query.edit_message_text(details, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif query.data == "paid":
+        context.user_data["awaiting_proof"] = True
+        query.edit_message_text("📤 Merci ! Envoie maintenant ton *screenshot* ou *ID de transaction* ici.")
+
+def handle_message(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    if context.user_data.get("awaiting_proof"):
+        proof = update.message.text or "📷 Screenshot envoyé"
+        product_code = user_selected_product.get(chat_id, "unknown")
+
+        # Notify admin
+        context.bot.send_message(
+            ADMIN_ID,
+            f"⚠️ Nouvelle preuve de paiement !\n\n"
+            f"👤 Client ID: {chat_id}\n"
+            f"🛒 Produit: {product_code}\n"
+            f"📄 Preuve: {proof}\n\n"
+            f"👉 Confirme avec: /confirm {chat_id} {product_code}\n"
+            f"❌ Refuser avec: /refuse {chat_id}"
+        )
+
+        context.bot.send_message(chat_id, "⏳ Merci ! Un administrateur va vérifier ton paiement.")
+        context.user_data["awaiting_proof"] = False
+
+def confirm(update: Update, context: CallbackContext):
+    if update.message.chat_id == ADMIN_ID:
+        try:
+            target_id = int(context.args[0])
+            product_code = context.args[1]
+            file_link = PRODUCTS[product_code]["file"]
+            context.bot.send_message(target_id, f"🎉 Paiement confirmé ! Voici ton produit 📘:\n{file_link}")
+            update.message.reply_text("✅ Produit envoyé avec succès.")
+        except:
+            update.message.reply_text("⚠️ Utilisation: /confirm <user_id> <product_code>")
+
+def refuse(update: Update, context: CallbackContext):
+    if update.message.chat_id == ADMIN_ID:
+        try:
+            target_id = int(context.args[0])
+            context.bot.send_message(target_id, "❌ Paiement non validé. Vérifie ton envoi et réessaie.")
+            update.message.reply_text("Refus envoyé.")
+        except:
+            update.message.reply_text("⚠️ Utilisation: /refuse <user_id>")
+
+# ==== MAIN ====
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CallbackQueryHandler(button))
+    dp.add_handler(MessageHandler(Filters.text | Filters.photo, handle_message))
+    dp.add_handler(CommandHandler("confirm", confirm))
+    dp.add_handler(CommandHandler("refuse", refuse))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()telegram.ext
